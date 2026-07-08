@@ -9,7 +9,10 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-add_executable(microtcp src/main.cc)
+add_executable(microtcp
+    src/main.cc
+    src/tun/TunDevice.cc
+)
 target_include_directories(microtcp PRIVATE src)
 target_compile_options(microtcp PRIVATE
     -Wall -Wextra -Wpedantic -Wshadow -Wconversion
