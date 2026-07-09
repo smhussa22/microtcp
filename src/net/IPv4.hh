@@ -31,7 +31,7 @@ namespace microtcp::net
         IPv4Header(const IPv4Header&) = default;
         IPv4Header& operator=(const IPv4Header&) = default;
 
-        IPv4Header(const IPv4Header&&) = default;
+        IPv4Header(IPv4Header&&) = default;
         IPv4Header& operator=(IPv4Header&&) = default;
 
         std::uint8_t version_ihl { };           // 4-bit version (always 4 for ipv4) + 4-bit IHL (header length in 32-bit words) which is 5 in this case (20 bytes / 4 bytes)

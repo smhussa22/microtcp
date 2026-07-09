@@ -36,7 +36,9 @@ namespace microtcp::net
         std::uint16_t total_length { static_cast<std::uint16_t>((buffer[2] << 8) | buffer[3]) };
         if (total_length < header_size) throw std::runtime_error("total length < header size");
         if (total_length > buffer.size()) throw std::runtime_error("total length > buffer size");
-
+        std::uint16_t computed { ipv4_header_checksum(buffer.subspan(0uz, header_size)) };
+        if (computed != 0u) throw std::runtime_error("bad ipv4 header checksum");
+        
         std::uint16_t identification { static_cast<std::uint16_t>((buffer[4] << 8) | buffer[5]) };
         std::uint16_t flags_frag_offset { static_cast<std::uint16_t>((buffer[6] << 8) | buffer[7]) };
         std::uint16_t header_checksum { static_cast<std::uint16_t>((buffer[10] << 8) | buffer[11]) }; 
