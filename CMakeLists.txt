@@ -9,11 +9,27 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-add_executable(microtcp
-    src/main.cc
+# core library shared by main exe and tests
+add_library(microtcp_lib
     src/tun/TunDevice.cc
 )
-target_include_directories(microtcp PRIVATE src)
-target_compile_options(microtcp PRIVATE
+target_include_directories(microtcp_lib PUBLIC src)
+target_compile_options(microtcp_lib PRIVATE
     -Wall -Wextra -Wpedantic -Wshadow -Wconversion
 )
+
+# main executable
+add_executable(microtcp src/main.cc)
+target_link_libraries(microtcp PRIVATE microtcp_lib)
+
+# testing
+include(FetchContent)
+FetchContent_Declare(googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP ON
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+enable_testing()
+add_subdirectory(tests)
