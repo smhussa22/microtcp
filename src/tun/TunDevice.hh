@@ -4,15 +4,22 @@
 // related headers
 
 // c sys headers
-
-// cpp stdlib headers
+#include <cstring>
 #include <cstddef>
 #include <cstdint>
+
+// cpp stdlib headers
 #include <span>
 #include <string>
 #include <string_view>
+#include <stdexcept>
 
 // 3rd party headers
+#include <fcntl.h>
+#include <linux/if.h>
+#include <sys/ioctl.h>
+#include <linux/if_tun.h>
+#include <unistd.h>
 
 // project headers
 
@@ -27,7 +34,6 @@ namespace microtcp::tun
 
         // opens /dev/net/tun and attaches this process to the given interface name
         explicit TunDevice(std::string_view device_name);
-
         ~TunDevice();
 
         TunDevice(const TunDevice&) = delete;
