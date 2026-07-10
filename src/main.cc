@@ -10,11 +10,13 @@
 #include <print>
 #include <span>
 #include <string_view>
+#include <vector>
 
 // 3rd party headers
 
 // project headers
 #include "net/IPv4.hh"
+#include "net/Icmp.hh"
 #include "tun/TunDevice.hh"
 
 void print_ip(std::uint32_t ip);
@@ -43,6 +45,19 @@ int main()
             std::print(" -> ");
             print_ip(hdr.dst_ip);
             std::println(" proto={} ttl={} len={}", protocol_name(hdr.protocol), hdr.ttl, hdr.total_length);
+
+            // reply to icmp echo requests addressed to our stack (10.0.0.2)
+            std::size_t header_size { static_cast<std::size_t>((hdr.version_ihl & 0x0F) * 4) };
+            if (hdr.protocol == 1u && hdr.dst_ip == 0x0A000002u && buffer[header_size] == 8u)
+            {
+
+                std::span<const std::uint8_t> icmp { buffer.data() + header_size, hdr.total_length - header_size };
+                std::vector<std::uint8_t> reply { microtcp::net::build_icmp_echo_reply(icmp) };
+                std::vector<std::uint8_t> packet { microtcp::net::build_ipv4(hdr.dst_ip, hdr.src_ip, 1u, reply) };
+                tun.write(packet);
+                std::println("[icmp] echo reply sent (seq={})", (icmp[6] << 8) | icmp[7]);
+
+            }
 
         }
         catch (const std::exception& e)

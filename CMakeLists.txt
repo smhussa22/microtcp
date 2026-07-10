@@ -13,6 +13,7 @@ endif()
 add_library(microtcp_lib
     src/tun/TunDevice.cc
     src/net/IPv4.cc
+    src/net/Icmp.cc
 )
 target_include_directories(microtcp_lib PUBLIC src)
 target_compile_options(microtcp_lib PRIVATE
