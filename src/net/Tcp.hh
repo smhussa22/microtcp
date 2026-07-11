@@ -10,6 +10,7 @@
 // cpp stdlib headers
 #include <span>
 #include <vector>
+#include <array>
 #include <stdexcept>
 #include <string>
 
