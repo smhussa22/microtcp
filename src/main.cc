@@ -17,6 +17,7 @@
 // project headers
 #include "net/IPv4.hh"
 #include "net/Icmp.hh"
+#include "net/Tcp.hh"
 #include "tun/TunDevice.hh"
 
 void print_ip(std::uint32_t ip);
@@ -28,6 +29,9 @@ int main()
     // attach to tun0; for each incoming packet, parse the ipv4 header and print a summary
     microtcp::tun::TunDevice tun { "tun0" };
     std::array<std::uint8_t, 1500uz> buffer { };
+
+    // single-connection tcp state; must outlive the loop since the handshake spans multiple packets
+    microtcp::net::TcpConnection conn { };
 
     for (;;)
     {
@@ -56,6 +60,34 @@ int main()
                 std::vector<std::uint8_t> packet { microtcp::net::build_ipv4(hdr.dst_ip, hdr.src_ip, 1u, reply) };
                 tun.write(packet);
                 std::println("[icmp] echo reply sent (seq={})", (icmp[6] << 8) | icmp[7]);
+
+            }
+
+            // drive the tcp handshake for segments addressed to our stack (10.0.0.2)
+            if (hdr.protocol == 6u && hdr.dst_ip == 0x0A000002u)
+            {
+
+                std::span<const std::uint8_t> segment { buffer.data() + header_size, hdr.total_length - header_size };
+                microtcp::net::TcpState before { conn.state };
+                std::vector<std::uint8_t> reply { microtcp::net::handle_tcp(conn, hdr.src_ip, hdr.dst_ip, segment) };
+
+                if (!reply.empty())
+                {
+
+                    std::vector<std::uint8_t> packet { microtcp::net::build_ipv4(hdr.dst_ip, hdr.src_ip, 6u, reply) };
+                    tun.write(packet);
+
+                    // TODO(phase 5): update this print to reflect what was sent, not just "syn-ack".
+                    //                after phase 5, a non-empty reply might be a syn-ack (during handshake)
+                    //                OR a data segment (during echo). options:
+                    //                  a) print based on `before` state: LISTEN->syn-ack, ESTABLISHED->data reply
+                    //                  b) print the payload size: "[tcp] sent {} bytes" ({} = reply.size() - 20)
+                    //                  c) both — one message per case
+                    std::println("[tcp] syn received; syn-ack sent");
+
+                }
+
+                if (before != conn.state && conn.state == microtcp::net::TcpState::ESTABLISHED) std::println("[tcp] connection established");
 
             }
 

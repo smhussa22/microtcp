@@ -209,14 +209,46 @@ namespace microtcp::net
             case TcpState::SYN_RECEIVED:
 
                 // final ack must acknowledge our syn-ack (our isn + 1) to prove they received it
-                if ((header.flags & TCP_ACK) && header.ack_num == conn.local_seq + 1u) conn.state = TcpState::ESTABLISHED;
+                if ((header.flags & TCP_ACK) && header.ack_num == conn.local_seq + 1u)
+                {
+
+                    conn.local_seq += 1u;
+                    conn.remote_seq += 1u;
+
+                    conn.state = TcpState::ESTABLISHED;
+
+                }
                 return { };
 
             case TcpState::ESTABLISHED:
+                
+                // compute header_size from header.data_offset (high nibble * 4) real segments carry no options here (data_offset = 5) 
+                std::size_t header_size { static_cast<std::size_t>(static_cast<std::uint8_t>(header.data_offset >> 4) * 4uz ) };
 
-                // PLACEHOLDER @todo
-                return {};
+                // slice the payload out of the segment; start @ 1 byte past payload and then grab num bytes of palyoad
+                std::span<const std::uint8_t> payload { segment.data() + header_size, segment.size() - header_size };
 
+                // if payload is empty, this is a pure ACK (client acknowledging OUR previous echo). nothing to do — return { }.
+                // if we always reply, we ping-pong ACKs forever with no data changing hands.
+                if (payload.empty()) return {};
+
+                // does header.seq_num match conn.remote_seq?
+                // if YES: they sent the next expected byte. proceed.
+                // if NO: this is a retransmission or out-of-order segment. 
+                if (header.seq_num != conn.remote_seq)
+                {
+
+                    // tell sender what byte we actually need
+                    return build_tcp(conn.local_ip, conn.remote_ip, conn.local_port, conn.remote_port, conn.local_seq, conn.remote_seq, TCP_ACK, std::numeric_limits<std::uint16_t>::max(), {});
+
+                }
+
+                // after accepitng incoming data update seq to expect next byte after this payload
+                conn.remote_seq += static_cast<std::uint32_t>(payload.size());
+                std::vector<std::uint8_t> response { build_tcp(conn.local_ip, conn.remote_ip, conn.local_port, conn.remote_port, conn.local_seq, conn.remote_seq, TCP_ACK | TCP_PSH, std::numeric_limits<std::uint16_t>::max(), payload) };
+                conn.local_seq += static_cast<std::uint32_t>(payload.size());
+                return response;       
+            
         }
         
         return { };
