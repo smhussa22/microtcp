@@ -13,7 +13,7 @@
 #include <array>
 #include <stdexcept>
 #include <string>
-
+#include <limits>
 // 3rd party headers
 
 // project headers
