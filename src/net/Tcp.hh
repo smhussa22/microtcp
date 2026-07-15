@@ -55,13 +55,16 @@ namespace microtcp::net
 
     static_assert(sizeof(TcpHeader) == 20uz);
 
-    // tracks state of a single tcp connection through the three-way handshake
+    // tracks state of a single tcp connection through open, data transfer, and close
     enum class TcpState : std::uint8_t
     {
 
         LISTEN,        // waiting for an incoming SYN
         SYN_RECEIVED,  // sent SYN-ACK; waiting for final ACK to complete handshake
-        ESTABLISHED,   // handshake complete; connection is open
+        ESTABLISHED,   // handshake complete; connection is open for data transfer
+        CLOSE_WAIT,    // peer sent FIN; we ack'd it but could still send data (half-close)
+        LAST_ACK,      // we sent our FIN (or FIN|ACK combo); waiting for their final ACK
+        CLOSED,        // fully closed; reset connection struct back to LISTEN for reuse
 
     };
 

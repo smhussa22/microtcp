@@ -89,6 +89,13 @@ int main()
 
                 if (before != conn.state && conn.state == microtcp::net::TcpState::ESTABLISHED) std::println("[tcp] connection established");
 
+                // TODO(phase 6): log close-related state transitions so you can see teardown happening.
+                //                add prints for:
+                //                  - before == ESTABLISHED && conn.state == LAST_ACK   → "[tcp] fin received; fin-ack sent"
+                //                  - before == LAST_ACK && conn.state == LISTEN        → "[tcp] connection closed; ready for next"
+                //                    (checking LISTEN because we reset conn = TcpConnection {})
+                //                these prints prove teardown works without needing to open Wireshark every time.
+
             }
 
         }
