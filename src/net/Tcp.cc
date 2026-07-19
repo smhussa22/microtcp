@@ -177,17 +177,6 @@ namespace microtcp::net
     std::vector<std::uint8_t> handle_tcp(TcpConnection& conn, std::uint32_t src_ip, std::uint32_t dst_ip, std::span<const std::uint8_t> segment)
     {
 
-        // TODO: parse the incoming segment via parse_tcp;
-        //
-        // LISTEN: if SYN set and no ACK, record remote seq/port/ip, pick a local ISN,
-        //         send SYN-ACK (seq=local_seq, ack=remote_seq+1, flags=SYN|ACK),
-        //         advance state to SYN_RECEIVED
-        //
-        // SYN_RECEIVED: if ACK set and ack_num == local_seq+1,
-        //               advance state to ESTABLISHED, return empty (nothing to send)
-        //
-        // ESTABLISHED: placeholder for phase 5 (data transfer)
-
         TcpHeader header { parse_tcp(src_ip, dst_ip, segment) };
 
         // TODO(phase 6): RST handling — if the peer sends RST, the connection is abruptly killed.
@@ -210,7 +199,7 @@ namespace microtcp::net
                 conn.local_seq = 1000u;
                 
                 conn.state = TcpState::SYN_RECEIVED;
-                return build_tcp(conn.local_ip, conn.remote_ip, conn.local_port, conn.remote_port, conn.local_seq, conn.remote_seq + 1u, TCP_SYN | TCP_ACK, 65535u, { });
+                return build_tcp(conn.local_ip, conn.remote_ip, conn.local_port, conn.remote_port, conn.local_seq, conn.remote_seq + 1u, TCP_SYN | TCP_ACK, std::numeric_limits<std::uint16_t>::max(), { });
 
             case TcpState::SYN_RECEIVED:
 
@@ -229,20 +218,16 @@ namespace microtcp::net
             case TcpState::ESTABLISHED:
             {
 
-                // TODO(phase 6): FIN handling — must be BEFORE the payload/echo logic below.
-                //                the peer wants to close the connection. steps:
-                //                  1. advance conn.remote_seq += 1 (FIN consumes one seq number, like SYN)
-                //                  2. build a FIN|ACK response using build_tcp:
-                //                       - seq = conn.local_seq
-                //                       - ack = conn.remote_seq (already advanced)
-                //                       - flags = TCP_FIN | TCP_ACK
-                //                       - no payload
-                //                  3. advance conn.local_seq += 1 (our FIN consumes one)
-                //                  4. transition conn.state = TcpState::LAST_ACK
-                //                  5. return the FIN|ACK segment
-                //                this is the "combined close" — we skip CLOSE_WAIT because we have
-                //                no more data to send. it collapses the 4-way close into 3 packets.
-                //                    if (header.flags & TCP_FIN) { ... }
+                if (header.flags & TCP_FIN)
+                {
+                    
+                    conn.remote_seq += 1; // fin still takes 1 seq number
+                    auto fin_ack = build_tcp(conn.local_ip, conn.remote_ip, conn.local_port, conn.remote_port, conn.local_seq, conn.remote_seq, TCP_FIN | TCP_ACK, std::numeric_limits<std::uint16_t>::max(), {});
+                    conn.local_seq += 1;
+                    conn.state = TcpState::LAST_ACK;
+                    return fin_ack;
+                    
+                }
 
                 // compute header_size from header.data_offset (high nibble * 4) real segments carry no options here (data_offset = 5)
                 std::size_t header_size { static_cast<std::size_t>(static_cast<std::uint8_t>(header.data_offset >> 4) * 4uz ) };
@@ -289,14 +274,13 @@ namespace microtcp::net
             case TcpState::LAST_ACK:
             {
 
-                // TODO(phase 6): waiting for peer's final ACK acknowledging our FIN.
-                //                validate: header.ack_num == conn.local_seq
-                //                  (local_seq was advanced past our FIN, so their ACK matches)
-                //                if valid:
-                //                  - reset the entire connection struct: conn = TcpConnection { };
-                //                    this puts state back to LISTEN and zeros all other fields.
-                //                  - return { } (nothing to send; close is complete)
-                //                if not valid (wrong ack_num): probably a duplicate/stray packet — ignore.
+               // validate their final ACK acknowledges our FIN
+                if (header.ack_num == conn.local_seq)
+                {
+
+                    conn = TcpConnection { };  // reset everything, back to LISTEN
+
+                }
                 return { };
 
             }
