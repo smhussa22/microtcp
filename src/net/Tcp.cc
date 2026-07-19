@@ -179,11 +179,13 @@ namespace microtcp::net
 
         TcpHeader header { parse_tcp(src_ip, dst_ip, segment) };
 
-        // TODO(phase 6): RST handling — if the peer sends RST, the connection is abruptly killed.
-        //                this can arrive in ANY state and must be handled first, before the switch.
-        //                action: reset the connection struct so we're back in LISTEN, ready for a
-        //                new SYN. no reply is sent for an RST.
-        //                    if (header.flags & TCP_RST) { conn = TcpConnection { }; return { }; }
+        if (header.flags & TCP_RST)
+        {
+
+            conn = TcpConnection { }; 
+            return { };
+
+        }
 
         switch (conn.state)
         {
@@ -221,9 +223,9 @@ namespace microtcp::net
                 if (header.flags & TCP_FIN)
                 {
                     
-                    conn.remote_seq += 1; // fin still takes 1 seq number
+                    conn.remote_seq += 1u; // fin still takes 1 seq number
                     auto fin_ack = build_tcp(conn.local_ip, conn.remote_ip, conn.local_port, conn.remote_port, conn.local_seq, conn.remote_seq, TCP_FIN | TCP_ACK, std::numeric_limits<std::uint16_t>::max(), {});
-                    conn.local_seq += 1;
+                    conn.local_seq += 1u;
                     conn.state = TcpState::LAST_ACK;
                     return fin_ack;
                     
