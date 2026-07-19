@@ -194,3 +194,89 @@ TEST(TcpTest, ListenIgnoresNonSyn)
     EXPECT_EQ(conn.state, TcpState::LISTEN);
 
 }
+
+// helper: drive a connection through the full handshake so it lands in ESTABLISHED
+static TcpConnection make_established_conn()
+{
+
+    TcpConnection conn { };
+    handle_tcp(conn, remote_ip, local_ip, valid_syn);
+    std::vector<std::uint8_t> ack { build_tcp(remote_ip, local_ip, 0x1234u, 8080u, 101u, conn.local_seq + 1u, TCP_ACK, 65535u, { }) };
+    handle_tcp(conn, remote_ip, local_ip, ack);
+    return conn;
+
+}
+
+// receiving a FIN in ESTABLISHED sends FIN|ACK back and moves to LAST_ACK
+TEST(TcpTest, FinInEstablishedGoesToLastAck)
+{
+
+    TcpConnection conn { make_established_conn() };
+    std::uint32_t saved_remote_seq { conn.remote_seq };
+    std::uint32_t saved_local_seq { conn.local_seq };
+
+    std::vector<std::uint8_t> fin { build_tcp(remote_ip, local_ip, 0x1234u, 8080u, conn.remote_seq, conn.local_seq, TCP_FIN | TCP_ACK, 65535u, { }) };
+    std::vector<std::uint8_t> reply { handle_tcp(conn, remote_ip, local_ip, fin) };
+
+    ASSERT_FALSE(reply.empty());
+    EXPECT_EQ(conn.state, TcpState::LAST_ACK);
+    EXPECT_EQ(conn.remote_seq, saved_remote_seq + 1u); // their FIN consumes one seq number
+    EXPECT_EQ(conn.local_seq, saved_local_seq + 1u);   // our FIN consumes one seq number
+
+    TcpHeader hdr { parse_tcp(local_ip, remote_ip, reply) };
+    EXPECT_EQ(hdr.flags, TCP_FIN | TCP_ACK);
+    EXPECT_EQ(hdr.seq_num, saved_local_seq);
+    EXPECT_EQ(hdr.ack_num, saved_remote_seq + 1u);
+
+}
+
+// the peer's final ACK for our FIN resets the connection back to LISTEN
+TEST(TcpTest, LastAckResetsOnFinalAck)
+{
+
+    TcpConnection conn { make_established_conn() };
+    std::vector<std::uint8_t> fin { build_tcp(remote_ip, local_ip, 0x1234u, 8080u, conn.remote_seq, conn.local_seq, TCP_FIN | TCP_ACK, 65535u, { }) };
+    handle_tcp(conn, remote_ip, local_ip, fin);
+    ASSERT_EQ(conn.state, TcpState::LAST_ACK);
+
+    std::vector<std::uint8_t> final_ack { build_tcp(remote_ip, local_ip, 0x1234u, 8080u, conn.remote_seq, conn.local_seq, TCP_ACK, 65535u, { }) };
+    std::vector<std::uint8_t> reply { handle_tcp(conn, remote_ip, local_ip, final_ack) };
+
+    EXPECT_TRUE(reply.empty());
+    EXPECT_EQ(conn.state, TcpState::LISTEN);
+    EXPECT_EQ(conn.remote_seq, 0u);
+    EXPECT_EQ(conn.local_seq, 0u);
+    EXPECT_EQ(conn.remote_ip, 0u);
+
+}
+
+// an RST in ESTABLISHED kills the connection and returns nothing
+TEST(TcpTest, RstResetsConnection)
+{
+
+    TcpConnection conn { make_established_conn() };
+    std::vector<std::uint8_t> rst { build_tcp(remote_ip, local_ip, 0x1234u, 8080u, conn.remote_seq, conn.local_seq, TCP_RST, 65535u, { }) };
+    std::vector<std::uint8_t> reply { handle_tcp(conn, remote_ip, local_ip, rst) };
+
+    EXPECT_TRUE(reply.empty());
+    EXPECT_EQ(conn.state, TcpState::LISTEN);
+    EXPECT_EQ(conn.remote_ip, 0u);
+
+}
+
+// after a full teardown, a fresh SYN establishes a new connection
+TEST(TcpTest, CanReconnectAfterClose)
+{
+
+    TcpConnection conn { make_established_conn() };
+    std::vector<std::uint8_t> fin { build_tcp(remote_ip, local_ip, 0x1234u, 8080u, conn.remote_seq, conn.local_seq, TCP_FIN | TCP_ACK, 65535u, { }) };
+    handle_tcp(conn, remote_ip, local_ip, fin);
+    std::vector<std::uint8_t> final_ack { build_tcp(remote_ip, local_ip, 0x1234u, 8080u, conn.remote_seq, conn.local_seq, TCP_ACK, 65535u, { }) };
+    handle_tcp(conn, remote_ip, local_ip, final_ack);
+    ASSERT_EQ(conn.state, TcpState::LISTEN);
+
+    std::vector<std::uint8_t> reply { handle_tcp(conn, remote_ip, local_ip, valid_syn) };
+    EXPECT_FALSE(reply.empty());
+    EXPECT_EQ(conn.state, TcpState::SYN_RECEIVED);
+
+}
